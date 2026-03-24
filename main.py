@@ -64,30 +64,48 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     if override_card:
         card_instruction = f"The card is confirmed to be: {override_card}. Do NOT attempt to re-identify it — use this as ground truth."
     else:
-        card_instruction = "STEP 1: Identify the card in extreme detail: Name, Set, Number, and Rarity (e.g., SIR, Full Art, Illustration Rare, Holo, Reverse Holo). Detect the language of the card. If it is NOT English, label it clearly (e.g., JP, KR, DE, FR, ES, IT, PT). If it is English, do not add any language label."
+        card_instruction = """STEP 1: Identify the card in extreme detail: Name, Set, Number, and Rarity (e.g., SIR, Full Art, Illustration Rare, Holo, Reverse Holo).
+
+    LANGUAGE DETECTION RULES — READ CAREFULLY:
+    - Determine the card's language by reading the CARD NAME at the top, the ATTACK NAMES, and the ATTACK/ABILITY DESCRIPTIONS only.
+    - DO NOT use artwork, background text, flavor text embedded in the illustration, or decorative kanji/script in the art to determine language.
+    - If the card name, attack names, and descriptions are in English, the card is English — even if the artwork contains Japanese or other script.
+    - Only label the card as non-English (JP, KR, DE, FR, etc.) if the printed card name and attack text are in that language.
+    - If non-English, add the language tag to the card header (e.g., [JP]) and include a Language line in the output."""
 
     prompt = f"""
     You are a professional PSA grader and market analyst.
 
     {card_instruction}
+
     STEP 2: Use Google Search to find the CURRENT market price for this specific version (Raw, PSA 9, and PSA 10).
-    Only use SOLD listings — completed eBay sales or TCGPlayer Market Price.
-    Do NOT use active auction bids, active listings, or Buy It Now prices that have not sold.
-    If sold data is unavailable, use TCGPlayer Market Price from TCGPlayer.com.
-    If the card is a non-English version, search for prices specific to that language version (e.g., JP, KR).
+    - Only use SOLD listings — completed eBay sales or TCGPlayer Market Price.
+    - Do NOT use active auction bids, active listings, or Buy It Now prices that have not sold.
+    - If sold data is unavailable, use TCGPlayer Market Price from TCGPlayer.com.
+    - If the card is a confirmed non-English version, search for prices specific to that language version.
+    - For every price listed, include the source in parentheses directly after the price. Examples: $45.00 (eBay last sold), $38.00 (TCGPlayer Market), $210.00 (eBay avg sold last 30 days)
+
     STEP 3: Grade the physical card in the image (Centering, Corners, Edges, Surface).
+
+    PSA GRADING STANDARDS — CENTERING:
+    - PSA 10 allows up to 60/40 centering on the front and 75/25 on the back. Do NOT penalize a card for centering within these tolerances.
+    - PSA 9 allows slightly looser centering than PSA 10 but must still be reasonably centered.
+    - Only dock the grade for centering if it clearly exceeds these tolerances.
 
     FORMAT THE RESPONSE EXACTLY LIKE THIS:
 
     # [PREDICTED PSA GRADE]
-    ## [CARD NAME] - [SET] - [NUMBER] [JP] (only add language tag if non-English)
+    ## [CARD NAME] - [SET] - [NUMBER] (add [JP] or language tag only if card name and attacks are non-English)
     **Rarity:** [e.g. Special Illustration Rare / Holo / etc]
-    **Language:** [e.g. Japanese / Korean / German — omit this line entirely if English]
-    **Market Value:** [Live Price for Raw, PSA 9, and PSA 10 — SOLD listings only]
+    **Language:** [e.g. Japanese / Korean — omit this line entirely if English]
+    **Market Value:**
+    Raw: $X.XX (source)
+    PSA 9: $X.XX (source)
+    PSA 10: $X.XX (source)
 
     ---
     **📐 Centering Assessment**
-    (Brief assessment)
+    (Assess centering against PSA 10 tolerances of 60/40 front, 75/25 back. State whether it is within tolerance.)
 
     **💥 Physical Condition**
     (Details on Corners, Edges, and Surface)
@@ -106,6 +124,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - Put the Grade and Price at the TOP.
     - Identify rarity markers like SIR, FA, SAR, etc.
     - Only use SOLD pricing — no active auctions, no unsold listings.
+    - Always include the price source in parentheses next to each price.
     - DO NOT use JSON, brackets, or code blocks.
     - DO NOT use footnotes or citations.
     - For PSA 10 candidates, note if centering could not be confirmed due to image quality.
@@ -212,9 +231,12 @@ async def price(ctx, *, card_name: str = None):
         - PSA 9 average SOLD price — completed sales only
         - PSA 10 average SOLD price — completed sales only
 
+        For every price listed, include the source in parentheses directly after the price.
+        Examples: $45.00 (eBay last sold), $38.00 (TCGPlayer Market), $210.00 (eBay avg sold last 30 days)
+
         Do NOT use active auction bids or unsold listings under any circumstances.
         If sold data is unavailable, fall back to TCGPlayer Market Price.
-        If the card name includes a language (e.g. JP, KR), search for that specific language version's pricing.
+        If the card name includes a language tag (e.g. JP, KR), search for that specific language version's pricing.
 
         Keep it brief and clean. No citations, no footnotes, no code blocks.
         """
@@ -282,6 +304,7 @@ async def flip(ctx, *, card_name: str = None):
         - PSA 9 average SOLD price (completed eBay sales only)
         - PSA 10 average SOLD price (completed eBay sales only)
         Do NOT use active auction bids or unsold listings under any circumstances.
+        For every price listed, include the source in parentheses. Example: $45.00 (eBay last sold)
         If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
 
         STEP 2: Calculate profit potential using these fixed PSA grading costs:
@@ -293,8 +316,8 @@ async def flip(ctx, *, card_name: str = None):
         FORMAT EXACTLY LIKE THIS:
 
         ## [CARD NAME]
-        **Raw Price:** $X.XX
-        **PSA 9 Value:** $X.XX | **PSA 10 Value:** $X.XX
+        **Raw Price:** $X.XX (source)
+        **PSA 9 Value:** $X.XX (source) | **PSA 10 Value:** $X.XX (source)
 
         ---
         **📊 Profit Breakdown**
