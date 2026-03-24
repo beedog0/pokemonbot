@@ -17,6 +17,9 @@ client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 # Store last graded image and card name per channel
 last_graded = {}  # {channel_id: {"url": attachment_url, "card": card_name}}
 
+# Store conversation history per user for !ask context
+ask_history = {}  # {user_id: [{"role": "user"/"model", "parts": [{"text": "..."}]}]}
+
 @bot.event
 async def on_ready():
     print(f'✅ MUKSCAN Professional is active!')
@@ -53,6 +56,16 @@ async def command_list(ctx):
     embed.add_field(
         name="👥 !pop <card name>",
         value="Check the PSA population report for a card — how many graded at each grade.\n`!pop Mew ex Shiny Treasure ex 347/190`",
+        inline=False
+    )
+    embed.add_field(
+        name="❓ !ask <question>",
+        value="Ask anything Pokémon or TCG related — events, stores, new sets, conventions, and more. Remembers context so you can reply to follow up.\n`!ask any TCG stores near 77001`\n`!ask when is the next Pokémon convention in Houston`",
+        inline=False
+    )
+    embed.add_field(
+        name="🗑️ !clearchat",
+        value="Clear your !ask conversation history and start fresh.\n`!clearchat`",
         inline=False
     )
     embed.set_footer(text="MUKSCAN: The Gold Standard")
@@ -425,6 +438,115 @@ async def pop(ctx, *, card_name: str = None):
 
     except Exception as e:
         await status_msg.edit(content=f"⚠️ Pop Report Error: {str(e)}")
+
+
+# --- COMMAND: !ask ---
+@bot.command()
+async def ask(ctx, *, question: str = None):
+    user_id = ctx.author.id
+
+    # Pull context from a replied-to MUKSCAN embed if no question typed
+    if not question:
+        if ctx.message.reference:
+            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            if ref.embeds and ref.embeds[0].description:
+                question = f"Based on this info: {ref.embeds[0].description[:500]}"
+            elif ref.content:
+                question = ref.content
+        if not question:
+            await ctx.send("❓ Ask me something! Example: `!ask any TCG stores near 77001`")
+            return
+
+    # If replying to a previous message, prepend that message as context
+    elif ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        if ref.embeds and ref.embeds[0].description:
+            question = f"Regarding this: {ref.embeds[0].description[:300]}\n\nMy question: {question}"
+        elif ref.content and ref.author.bot:
+            question = f"Regarding your previous response: {ref.content[:300]}\n\nMy question: {question}"
+
+    # Initialize history for this user if needed
+    if user_id not in ask_history:
+        ask_history[user_id] = []
+
+    # Keep last 10 exchanges to avoid token bloat
+    if len(ask_history[user_id]) > 20:
+        ask_history[user_id] = ask_history[user_id][-20:]
+
+    # Add user message to history
+    ask_history[user_id].append({
+        "role": "user",
+        "parts": [{"text": question}]
+    })
+
+    status_msg = await ctx.send("🔍 MUKSCAN is looking into that...")
+
+    system_prompt = """You are MUKSCAN, a Pokémon and TCG expert assistant. You ONLY answer questions related to:
+    - Pokémon TCG cards, sets, rarities, and collecting
+    - TCG stores, local game stores (LGS), card shops
+    - Pokémon events, conventions, tournaments, prereleases
+    - New set releases, product drops, and collection announcements
+    - Card grading (PSA, CGC, BGS) and investing
+    - General Pokémon game and franchise news relevant to collectors
+
+    If a question is completely unrelated to Pokémon or TCG, politely decline and remind the user what you can help with.
+
+    Always use Google Search to find current, accurate information — especially for:
+    - Store locations (use the zip code or address provided)
+    - Upcoming events and conventions
+    - New set release dates and products
+    - Current news in the Pokémon TCG community
+
+    Be conversational, helpful, and concise. Format responses cleanly without excessive headers."""
+
+    try:
+        # Build contents with system context + full history
+        contents = [{"role": "user", "parts": [{"text": system_prompt}]},
+                    {"role": "model", "parts": [{"text": "Understood! I'm MUKSCAN, your Pokémon and TCG expert. Ask me anything about cards, stores, events, or collecting!"}]}]
+        contents.extend(ask_history[user_id])
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=contents,
+            config=genai.types.GenerateContentConfig(
+                tools=[genai.types.Tool(google_search=genai.types.GoogleSearch())]
+            )
+        )
+
+        reply = response.text
+
+        # Add model response to history
+        ask_history[user_id].append({
+            "role": "model",
+            "parts": [{"text": reply}]
+        })
+
+        # Split into chunks if over Discord's 4096 embed limit
+        chunks = [reply[i:i+4000] for i in range(0, len(reply), 4000)]
+
+        await status_msg.delete()
+
+        for i, chunk in enumerate(chunks):
+            embed = discord.Embed(
+                title="🔍 MUKSCAN Assistant" if i == 0 else "🔍 MUKSCAN Assistant (continued)",
+                description=chunk,
+                color=0x3498db
+            )
+            if i == len(chunks) - 1:
+                embed.set_footer(text="Reply to this message with !ask to follow up | !clearchat to reset")
+            await ctx.send(embed=embed)
+
+    except Exception as e:
+        await status_msg.edit(content=f"⚠️ Ask Error: {str(e)}")
+
+
+# --- COMMAND: !clearchat ---
+@bot.command()
+async def clearchat(ctx):
+    user_id = ctx.author.id
+    if user_id in ask_history:
+        del ask_history[user_id]
+    await ctx.send("🗑️ Your conversation history has been cleared. Fresh start!")
 
 
 bot.run(os.getenv('DISCORD_TOKEN'))
