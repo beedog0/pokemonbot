@@ -3,20 +3,19 @@ from discord.ext import commands
 from google import genai
 import os
 import requests
-import random
 from io import BytesIO
 
-# 1. Setup Bot Intents
+# 1. Setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 2. Setup New Gemini SDK
+# 2. Setup Client (Ensure GEMINI_API_KEY is in Railway Variables)
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
 @bot.event
 async def on_ready():
-    print(f'✅ MUKSCAN is live and using the new Gemini SDK!')
+    print(f'✅ MUKSCAN Paid Tier is active using Gemini 2.5 Flash!')
 
 @bot.command()
 async def grade(ctx):
@@ -29,43 +28,46 @@ async def grade(ctx):
             attachment = referenced_msg.attachments[0]
 
     if not attachment:
-        await ctx.send("📸 Please attach a photo or reply to one with `!grade`!")
+        await ctx.send("📸 No photo found! Attach a card or reply to one.")
         return
 
-    await ctx.send("🧐 MUKSCAN is squinting at your card with the new SDK...")
+    status_msg = await ctx.send("🧐 MUKSCAN is performing a professional analysis...")
 
     # Download image
     try:
         response = requests.get(attachment.url)
         img_data = BytesIO(response.content).read()
-    except Exception as e:
-        await ctx.send("❌ Failed to download the image.")
+    except Exception:
+        await status_msg.edit(content="❌ Failed to download the image.")
         return
 
+    # Professional Grader Prompt
     prompt = """
-    You are a professional PSA card grader. Analyze this Pokémon card image:
-    1. Identify the Name, Set, and Number.
-    2. Centering: Estimate L/R and T/B ratios.
-    3. Condition: Look for whitening or surface issues.
-    4. Grade: Provide a predicted PSA grade (1-10).
-    Return the result in a clean, bolded format for Discord.
+    Identify this Pokémon card (Name, Set, Number).
+    Act as a strict PSA Grader. Evaluate:
+    - Centering (L/R and T/B ratios)
+    - Corners/Edges (look for whitening/silvering)
+    - Surface (scratches/print lines)
+    Provide a Predicted PSA Grade (1-10) and an estimated Market Value.
+    Format the response for a clean Discord Embed. 
+    NO footnotes, NO citations, NO search suggestions.
     """
 
     try:
-        # The new way to call Gemini 
+        # Using the current stable 2026 model: gemini-2.5-flash
         response = client.models.generate_content(
-            model='gemini-2.0-flash', # Using the newest 2026 stable model
+            model='gemini-2.5-flash',
             contents=[prompt, genai.types.Part.from_bytes(data=img_data, mime_type='image/jpeg')]
         )
         
         embed = discord.Embed(title="MUKSCAN Grading Report", color=0xFFD700)
         embed.set_thumbnail(url=attachment.url)
         embed.description = response.text
-        embed.set_footer(text="Grade is an estimate. Muks don't have fingers, so be nice.")
+        embed.set_footer(text="Verified Paid Tier Grade")
         
-        await ctx.send(embed=embed)
+        await status_msg.edit(content=None, embed=embed)
 
     except Exception as e:
-        await ctx.send(f"⚠️ MUKSCAN had a brain fart: {str(e)}")
+        await status_msg.edit(content=f"⚠️ MUKSCAN Error: {str(e)}")
 
 bot.run(os.getenv('DISCORD_TOKEN'))
