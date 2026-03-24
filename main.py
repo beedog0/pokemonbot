@@ -120,7 +120,8 @@ async def price(ctx, *, card_name: str = None):
         embed.description = response.text
         embed.set_footer(text="Live data from eBay & TCGPlayer via Google Search")
 
-        await status_msg.edit(content=None, embed=embed)
+        await status_msg.delete()
+        await ctx.send(embed=embed)
 
     except Exception as e:
         await status_msg.edit(content=f"⚠️ Price Check Error: {str(e)}")
