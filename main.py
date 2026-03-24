@@ -11,7 +11,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 2. Setup Gemini Client (Paid Tier Required for Search Tool)
+# 2. Setup Gemini Client
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
 @bot.event
@@ -42,7 +42,6 @@ async def grade(ctx):
         await status_msg.edit(content="❌ Failed to download the image.")
         return
 
-    # Updated Prompt for Top-Heavy Info + Rarity + Search
     prompt = """
     You are a professional PSA grader and market analyst.
     
@@ -75,23 +74,21 @@ async def grade(ctx):
     """
 
     try:
-        # Using the Search Tool automatically in the grading process
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-04-17',
+            model='gemini-2.0-flash-lite',  # ← fixed model
             contents=[prompt, genai.types.Part.from_bytes(data=img_data, mime_type='image/jpeg')],
             config=genai.types.GenerateContentConfig(
-                tools=[genai.types.Tool(google_search=genai.types.GoogleSearchRetrieval())]
+                tools=[genai.types.Tool(google_search=genai.types.GoogleSearch())]  # ← fixed tool
             )
         )
-        
-        # Random footer for vibe
+
         footers = ["Official MUKSCAN PSA Estimate", "Verified Market Data", "MUKSCAN: The Gold Standard"]
 
         embed = discord.Embed(title="📋 MUKSCAN Professional Report", color=0xFFD700)
         embed.set_thumbnail(url=attachment.url)
         embed.description = response.text
         embed.set_footer(text=random.choice(footers))
-        
+
         await status_msg.edit(content=None, embed=embed)
 
     except Exception as e:
