@@ -77,7 +77,7 @@ async def grade(ctx):
     try:
         # Using the Search Tool automatically in the grading process
         response = client.models.generate_content(
-            model='gemini-2.0-flash', # Or gemini-2.5-flash
+            model='gemini-2.5-flash-preview-04-17',
             contents=[prompt, genai.types.Part.from_bytes(data=img_data, mime_type='image/jpeg')],
             config=genai.types.GenerateContentConfig(
                 tools=[genai.types.Tool(google_search=genai.types.GoogleSearchRetrieval())]
