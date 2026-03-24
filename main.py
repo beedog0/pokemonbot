@@ -14,8 +14,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # 2. Setup Gemini Client
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
-# Store last graded image per channel
-last_graded = {}  # {channel_id: attachment_url}
+# Store last graded image and card name per channel
+last_graded = {}  # {channel_id: {"url": attachment_url, "card": card_name}}
 
 @bot.event
 async def on_ready():
@@ -46,8 +46,13 @@ async def command_list(ctx):
         inline=False
     )
     embed.add_field(
-        name="📊 !flip <card name>",
-        value="Check if a card is worth grading — shows raw vs PSA 9/10 price spread and estimated profit after PSA fees.\n`!flip Pikachu 018/091 Paldean Fates`",
+        name="📊 !flip [card name]",
+        value="Check if a card is worth grading. Can reply to a grade report or photo, or type a name.\n`!flip Pikachu 018/091 Paldean Fates`",
+        inline=False
+    )
+    embed.add_field(
+        name="👥 !pop <card name>",
+        value="Check the PSA population report for a card — how many graded at each grade.\n`!pop Mew ex Shiny Treasure ex 347/190`",
         inline=False
     )
     embed.set_footer(text="MUKSCAN: The Gold Standard")
@@ -109,6 +114,17 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
             )
         )
 
+        # Try to extract card name from response for context storage
+        card_name = None
+        lines = response.text.split('\n')
+        for line in lines:
+            if line.startswith('##'):
+                card_name = line.replace('##', '').strip()
+                break
+
+        # Save card name alongside image URL
+        last_graded[ctx.channel.id] = {"url": img_url, "card": card_name or override_card}
+
         footers = ["Official MUKSCAN PSA Estimate", "Verified Market Data", "MUKSCAN: The Gold Standard"]
 
         embed = discord.Embed(title="📋 MUKSCAN Professional Report", color=0xFFD700)
@@ -138,7 +154,7 @@ async def grade(ctx):
         await ctx.send("📸 No photo found! Attach a card or reply to one with `!grade`.")
         return
 
-    last_graded[ctx.channel.id] = attachment.url
+    last_graded[ctx.channel.id] = {"url": attachment.url, "card": None}
     status_msg = await ctx.send("🧐 MUKSCAN is performing a professional Grade & Price analysis...")
 
     try:
@@ -156,11 +172,12 @@ async def regrade(ctx, *, correction: str = None):
         await ctx.send("❓ Tell me the correct card! Example: `!regrade Pikachu 018/091 Paldean Fates`")
         return
 
-    img_url = last_graded.get(ctx.channel.id)
-    if not img_url:
+    cached = last_graded.get(ctx.channel.id)
+    if not cached:
         await ctx.send("❓ No recent card found in this channel. Run `!grade` first.")
         return
 
+    img_url = cached["url"]
     status_msg = await ctx.send(f"🔄 Re-grading as **{correction}**...")
 
     try:
@@ -183,13 +200,13 @@ async def price(ctx, *, card_name: str = None):
     try:
         price_prompt = f"""
         Find the current market price for the Pokémon card: {card_name}.
-        
+
         Provide:
         - Average recent sold price on eBay (Raw)
         - Current Market Price on TCGPlayer (Raw)
         - PSA 9 sold price
         - PSA 10 sold price
-        
+
         Keep it brief and clean. No citations, no footnotes, no code blocks.
         """
 
@@ -212,19 +229,44 @@ async def price(ctx, *, card_name: str = None):
         await status_msg.edit(content=f"⚠️ Price Check Error: {str(e)}")
 
 
+# --- HELPER: Extract card name from context ---
+async def resolve_card_name(ctx, card_name):
+    """Try to get card name from: typed input → replied embed → last graded cache"""
+    if card_name:
+        return card_name
+
+    # Check if replying to a MUKSCAN grade report embed
+    if ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        if ref.embeds:
+            desc = ref.embeds[0].description or ""
+            for line in desc.split('\n'):
+                if line.startswith('##'):
+                    return line.replace('##', '').strip()
+
+    # Fall back to last graded cache
+    cached = last_graded.get(ctx.channel.id)
+    if cached and cached.get("card"):
+        return cached["card"]
+
+    return None
+
+
 # --- COMMAND: !flip ---
 @bot.command()
 async def flip(ctx, *, card_name: str = None):
-    if not card_name:
-        await ctx.send("❓ Please provide a card name! Example: `!flip Pikachu 018/091 Paldean Fates`")
+    resolved = await resolve_card_name(ctx, card_name)
+
+    if not resolved:
+        await ctx.send("❓ Please provide a card name, or reply to a grade report / photo.\nExample: `!flip Pikachu 018/091 Paldean Fates`")
         return
 
-    status_msg = await ctx.send(f"📊 Calculating flip potential for **{card_name}**...")
+    status_msg = await ctx.send(f"📊 Calculating flip potential for **{resolved}**...")
 
     try:
         flip_prompt = f"""
         You are a Pokémon card investment analyst. Evaluate whether this card is worth grading and flipping:
-        Card: {card_name}
+        Card: {resolved}
 
         STEP 1: Use Google Search to find current prices:
         - Raw average sold price (eBay)
@@ -262,7 +304,7 @@ async def flip(ctx, *, card_name: str = None):
             )
         )
 
-        embed = discord.Embed(title=f"📊 Flip Analysis: {card_name}", color=0x9b59b6)
+        embed = discord.Embed(title=f"📊 Flip Analysis: {resolved}", color=0x9b59b6)
         embed.description = response.text
         embed.set_footer(text="MUKSCAN Flip Calculator | PSA Economy $25/card")
 
@@ -271,6 +313,64 @@ async def flip(ctx, *, card_name: str = None):
 
     except Exception as e:
         await status_msg.edit(content=f"⚠️ Flip Analysis Error: {str(e)}")
+
+
+# --- COMMAND: !pop ---
+@bot.command()
+async def pop(ctx, *, card_name: str = None):
+    resolved = await resolve_card_name(ctx, card_name)
+
+    if not resolved:
+        await ctx.send("❓ Please provide a card name, or reply to a grade report.\nExample: `!pop Mew ex Shiny Treasure ex 347/190`")
+        return
+
+    status_msg = await ctx.send(f"👥 Pulling PSA population data for **{resolved}**...")
+
+    try:
+        pop_prompt = f"""
+        You are a Pokémon card grading analyst. Look up the PSA population report for this card:
+        Card: {resolved}
+
+        Use Google Search to find the current PSA population data.
+
+        FORMAT EXACTLY LIKE THIS:
+
+        ## [CARD NAME] - PSA Population Report
+        **Total Graded:** [number]
+
+        | Grade | Population |
+        |-------|------------|
+        | PSA 10 | [number] |
+        | PSA 9  | [number] |
+        | PSA 8  | [number] |
+        | PSA 7  | [number] |
+        | PSA 6 and below | [number] |
+
+        ---
+        **📊 Analysis**
+        PSA 10 Rate: [X]% of all graded copies
+        (1-2 sentences on what the pop report means for this card's value and rarity)
+
+        STRICT RULES: No citations, no footnotes, no code blocks outside the table.
+        """
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=pop_prompt,
+            config=genai.types.GenerateContentConfig(
+                tools=[genai.types.Tool(google_search=genai.types.GoogleSearch())]
+            )
+        )
+
+        embed = discord.Embed(title=f"👥 PSA Pop Report: {resolved}", color=0xe74c3c)
+        embed.description = response.text
+        embed.set_footer(text="Population data via PSA | MUKSCAN")
+
+        await status_msg.delete()
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await status_msg.edit(content=f"⚠️ Pop Report Error: {str(e)}")
 
 
 bot.run(os.getenv('DISCORD_TOKEN'))
