@@ -64,21 +64,26 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     if override_card:
         card_instruction = f"The card is confirmed to be: {override_card}. Do NOT attempt to re-identify it — use this as ground truth."
     else:
-        card_instruction = "STEP 1: Identify the card in extreme detail: Name, Set, Number, and Rarity (e.g., SIR, Full Art, Illustration Rare, Holo, Reverse Holo)."
+        card_instruction = "STEP 1: Identify the card in extreme detail: Name, Set, Number, and Rarity (e.g., SIR, Full Art, Illustration Rare, Holo, Reverse Holo). Detect the language of the card. If it is NOT English, label it clearly (e.g., JP, KR, DE, FR, ES, IT, PT). If it is English, do not add any language label."
 
     prompt = f"""
     You are a professional PSA grader and market analyst.
 
     {card_instruction}
     STEP 2: Use Google Search to find the CURRENT market price for this specific version (Raw, PSA 9, and PSA 10).
+    Only use SOLD listings — completed eBay sales or TCGPlayer Market Price.
+    Do NOT use active auction bids, active listings, or Buy It Now prices that have not sold.
+    If sold data is unavailable, use TCGPlayer Market Price from TCGPlayer.com.
+    If the card is a non-English version, search for prices specific to that language version (e.g., JP, KR).
     STEP 3: Grade the physical card in the image (Centering, Corners, Edges, Surface).
 
     FORMAT THE RESPONSE EXACTLY LIKE THIS:
 
     # [PREDICTED PSA GRADE]
-    ## [CARD NAME] - [SET] - [NUMBER]
+    ## [CARD NAME] - [SET] - [NUMBER] [JP] (only add language tag if non-English)
     **Rarity:** [e.g. Special Illustration Rare / Holo / etc]
-    **Market Value:** [Live Price for Raw, PSA 9, and PSA 10]
+    **Language:** [e.g. Japanese / Korean / German — omit this line entirely if English]
+    **Market Value:** [Live Price for Raw, PSA 9, and PSA 10 — SOLD listings only]
 
     ---
     **📐 Centering Assessment**
@@ -100,6 +105,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     STRICT RULES:
     - Put the Grade and Price at the TOP.
     - Identify rarity markers like SIR, FA, SAR, etc.
+    - Only use SOLD pricing — no active auctions, no unsold listings.
     - DO NOT use JSON, brackets, or code blocks.
     - DO NOT use footnotes or citations.
     - For PSA 10 candidates, note if centering could not be confirmed due to image quality.
@@ -114,7 +120,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
             )
         )
 
-        # Try to extract card name from response for context storage
+        # Extract card name from response for context storage
         card_name = None
         lines = response.text.split('\n')
         for line in lines:
@@ -122,7 +128,6 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
                 card_name = line.replace('##', '').strip()
                 break
 
-        # Save card name alongside image URL
         last_graded[ctx.channel.id] = {"url": img_url, "card": card_name or override_card}
 
         footers = ["Official MUKSCAN PSA Estimate", "Verified Market Data", "MUKSCAN: The Gold Standard"]
@@ -202,10 +207,14 @@ async def price(ctx, *, card_name: str = None):
         Find the current market price for the Pokémon card: {card_name}.
 
         Provide:
-        - Average recent sold price on eBay (Raw)
+        - Average recent SOLD price on eBay (Raw) — completed sales only, no active listings
         - Current Market Price on TCGPlayer (Raw)
-        - PSA 9 sold price
-        - PSA 10 sold price
+        - PSA 9 average SOLD price — completed sales only
+        - PSA 10 average SOLD price — completed sales only
+
+        Do NOT use active auction bids or unsold listings under any circumstances.
+        If sold data is unavailable, fall back to TCGPlayer Market Price.
+        If the card name includes a language (e.g. JP, KR), search for that specific language version's pricing.
 
         Keep it brief and clean. No citations, no footnotes, no code blocks.
         """
@@ -220,7 +229,7 @@ async def price(ctx, *, card_name: str = None):
 
         embed = discord.Embed(title=f"💰 Market Value: {card_name}", color=0x2ecc71)
         embed.description = response.text
-        embed.set_footer(text="Live data via Google Search | eBay & TCGPlayer")
+        embed.set_footer(text="Sold listings only | eBay & TCGPlayer via Google Search")
 
         await status_msg.delete()
         await ctx.send(embed=embed)
@@ -268,10 +277,12 @@ async def flip(ctx, *, card_name: str = None):
         You are a Pokémon card investment analyst. Evaluate whether this card is worth grading and flipping:
         Card: {resolved}
 
-        STEP 1: Use Google Search to find current prices:
-        - Raw average sold price (eBay)
-        - PSA 9 average sold price
-        - PSA 10 average sold price
+        STEP 1: Use Google Search to find current SOLD prices only:
+        - Raw average SOLD price (eBay completed sales or TCGPlayer Market Price)
+        - PSA 9 average SOLD price (completed eBay sales only)
+        - PSA 10 average SOLD price (completed eBay sales only)
+        Do NOT use active auction bids or unsold listings under any circumstances.
+        If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
 
         STEP 2: Calculate profit potential using these fixed PSA grading costs:
         - PSA Economy submission: $25 per card
@@ -306,7 +317,7 @@ async def flip(ctx, *, card_name: str = None):
 
         embed = discord.Embed(title=f"📊 Flip Analysis: {resolved}", color=0x9b59b6)
         embed.description = response.text
-        embed.set_footer(text="MUKSCAN Flip Calculator | PSA Economy $25/card")
+        embed.set_footer(text="MUKSCAN Flip Calculator | PSA Economy $25/card | Sold listings only")
 
         await status_msg.delete()
         await ctx.send(embed=embed)
