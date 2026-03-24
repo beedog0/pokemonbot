@@ -1,90 +1,63 @@
 import discord
 from discord.ext import commands
-import requests
+import google.generativeai as genai
 import os
+import requests
+from io import BytesIO
 
-# 1. Setup Bot Intents
+# 1. Setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Setup Gemini
+genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 @bot.event
 async def on_ready():
-    print(f'✅ MUKSCAN is logged in as {bot.user}')
+    print(f'✅ MUKSCAN (Gemini Edition) is online!')
 
 @bot.command()
 async def grade(ctx):
     attachment = None
-
-    # Check if the message itself has an image
     if ctx.message.attachments:
         attachment = ctx.message.attachments[0]
-    
-    # Check if the user is REPLYING to a message that has an image
     elif ctx.message.reference:
         referenced_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         if referenced_msg.attachments:
             attachment = referenced_msg.attachments[0]
 
     if not attachment:
-        await ctx.send("📸 Please attach a photo or reply to one with `!grade`!")
+        await ctx.send("📸 Please attach a card photo or reply to one with `!grade`!")
         return
 
-    # Filter for image files only
-    if not any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp']):
-        await ctx.send("❌ That doesn't look like an image file!")
-        return
+    await ctx.send("🧐 MUKSCAN is squinting at your card... hold on.")
 
-    img_url = attachment.url
-    await ctx.send("🔍 Analyzing card... calculating centering and surface quality.")
+    # Download the image to send to Gemini
+    response = requests.get(attachment.url)
+    img_data = BytesIO(response.content).read()
 
-    # 2. Get your keys from Railway Environment Variables
-    api_key = os.getenv('XIMILAR_API_KEY')
-    endpoint = "https://api.ximilar.com/collectibles/v2/tcg_id"
-    
-    headers = {
-        "Authorization": f"Token {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "records": [{"_url": img_url}],
-        "grading": True,
-        "calculate_centering": True
-    }
+    prompt = """
+    You are a professional PSA card grader. Analyze this Pokémon card image:
+    1. Identify the Name, Set, and Number.
+    2. Centering: Estimate L/R and T/B ratios (e.g., 60/40).
+    3. Condition: Look for whitening on edges/corners or surface scratches.
+    4. Grade: Provide a predicted PSA grade (1-10).
+    Keep the response short and formatted for Discord.
+    """
 
     try:
-        response = requests.post(endpoint, json=payload, headers=headers)
-        data = response.json()
+        # Generate the grade
+        result = model.generate_content([prompt, {'mime_type': 'image/jpeg', 'data': img_data}])
         
-        # 3. Extract the data
-        if 'records' not in data or not data['records']:
-            await ctx.send("⚠️ Ximilar API returned no data. Check your API key!")
-            return
-
-        record = data['records'][0]
-        card_name = record.get('best_label', "Unknown Card")
+        embed = discord.Embed(title="MUKSCAN Gemini Report", color=0x00ff00)
+        embed.set_thumbnail(url=attachment.url)
+        embed.description = result.text
+        embed.set_footer(text="Powered by Gemini 1.5 Flash")
         
-        grading = record.get('_grading', {})
-        centering = grading.get('centering_inspect', {})
-        predicted_grade = grading.get('grade', "N/A")
-
-        # 4. Format the Discord Response
-        embed = discord.Embed(title="MUKSCAN AI Grade Report", color=0xFFD700)
-        embed.set_thumbnail(url=img_url)
-        embed.add_field(name="🃏 Card Identified", value=f"**{card_name}**", inline=False)
-        embed.add_field(name="📈 PSA Estimate", value=f"**Grade: {predicted_grade}**", inline=True)
-        
-        if centering:
-            lr = centering.get('lr_ratio', "??")
-            tb = centering.get('tb_ratio', "??")
-            embed.add_field(name="📐 Centering", value=f"L/R: {lr}\nT/B: {tb}", inline=True)
-
-        embed.set_footer(text="Note: AI grading is an estimate only.")
         await ctx.send(embed=embed)
-
     except Exception as e:
-        print(f"Error: {e}")
-        await ctx.send("⚠️ Oops! The AI had a brain fart. Try a clearer, top-down photo.")
+        await ctx.send(f"⚠️ Error: {e}")
 
 bot.run(os.getenv('DISCORD_TOKEN'))
