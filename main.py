@@ -79,18 +79,20 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     {card_instruction}
 
     STEP 2: Use Google Search to find the CURRENT market price for this specific version (Raw, PSA 9, and PSA 10).
-    - Only use SOLD listings — completed eBay sales or TCGPlayer Market Price.
-    - Do NOT use active auction bids, active listings, or Buy It Now prices that have not sold.
-    - If sold data is unavailable, use TCGPlayer Market Price from TCGPlayer.com.
+    PRICING RULES:
+    - For Raw price: use eBay completed/sold listings average. Label as (eBay sold).
+    - For PSA 9 and PSA 10: ALWAYS use TCGPlayer Market Price as the primary source. Search "TCGPlayer [card name] PSA 9" and "TCGPlayer [card name] PSA 10". Label as (TCGPlayer).
+    - If TCGPlayer data is unavailable for graded copies, search eBay completed sales for PSA 9 and PSA 10 and label as (eBay sold).
+    - Do NOT use active auction bids, active listings, or unsold Buy It Now prices ever.
     - If the card is a confirmed non-English version, search for prices specific to that language version.
-    - For every price listed, include the source in parentheses directly after the price. Examples: $45.00 (eBay last sold), $38.00 (TCGPlayer Market), $210.00 (eBay avg sold last 30 days)
 
     STEP 3: Grade the physical card in the image (Centering, Corners, Edges, Surface).
 
     PSA GRADING STANDARDS — CENTERING:
-    - PSA 10 allows up to 60/40 centering on the front and 75/25 on the back. Do NOT penalize a card for centering within these tolerances.
-    - PSA 9 allows slightly looser centering than PSA 10 but must still be reasonably centered.
+    - PSA 10 allows up to 60/40 centering on the front and 75/25 on the back.
+    - PSA 9 allows slightly looser centering but must still be reasonably centered.
     - Only dock the grade for centering if it clearly exceeds these tolerances.
+    - Do NOT recite the PSA tolerance numbers in the centering assessment — just describe what you observe and whether it passes or not.
 
     FORMAT THE RESPONSE EXACTLY LIKE THIS:
 
@@ -99,13 +101,13 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     **Rarity:** [e.g. Special Illustration Rare / Holo / etc]
     **Language:** [e.g. Japanese / Korean — omit this line entirely if English]
     **Market Value:**
-    Raw: $X.XX (source)
-    PSA 9: $X.XX (source)
-    PSA 10: $X.XX (source)
+    Raw: $X.XX (eBay sold)
+    PSA 9: $X.XX (TCGPlayer) or $X.XX (eBay sold)
+    PSA 10: $X.XX (TCGPlayer) or $X.XX (eBay sold)
 
     ---
     **📐 Centering Assessment**
-    (Assess centering against PSA 10 tolerances of 60/40 front, 75/25 back. State whether it is within tolerance.)
+    (Describe what you observe about the borders and whether centering is acceptable. Do NOT quote PSA tolerance numbers.)
 
     **💥 Physical Condition**
     (Details on Corners, Edges, and Surface)
@@ -125,6 +127,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - Identify rarity markers like SIR, FA, SAR, etc.
     - Only use SOLD pricing — no active auctions, no unsold listings.
     - Always include the price source in parentheses next to each price.
+    - DO NOT recite PSA tolerance numbers anywhere in the response.
     - DO NOT use JSON, brackets, or code blocks.
     - DO NOT use footnotes or citations.
     - For PSA 10 candidates, note if centering could not be confirmed due to image quality.
@@ -139,7 +142,6 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
             )
         )
 
-        # Extract card name from response for context storage
         card_name = None
         lines = response.text.split('\n')
         for line in lines:
@@ -225,18 +227,12 @@ async def price(ctx, *, card_name: str = None):
         price_prompt = f"""
         Find the current market price for the Pokémon card: {card_name}.
 
-        Provide:
-        - Average recent SOLD price on eBay (Raw) — completed sales only, no active listings
-        - Current Market Price on TCGPlayer (Raw)
-        - PSA 9 average SOLD price — completed sales only
-        - PSA 10 average SOLD price — completed sales only
-
-        For every price listed, include the source in parentheses directly after the price.
-        Examples: $45.00 (eBay last sold), $38.00 (TCGPlayer Market), $210.00 (eBay avg sold last 30 days)
-
-        Do NOT use active auction bids or unsold listings under any circumstances.
-        If sold data is unavailable, fall back to TCGPlayer Market Price.
-        If the card name includes a language tag (e.g. JP, KR), search for that specific language version's pricing.
+        PRICING RULES:
+        - Raw price: eBay completed/sold listings average. Label as (eBay sold).
+        - PSA 9 and PSA 10: use TCGPlayer Market Price as primary source. Label as (TCGPlayer).
+        - If TCGPlayer graded data unavailable, use eBay completed sales. Label as (eBay sold).
+        - Do NOT use active auction bids or unsold listings under any circumstances.
+        - If the card name includes a language tag (e.g. JP, KR), search for that specific language version.
 
         Keep it brief and clean. No citations, no footnotes, no code blocks.
         """
@@ -262,11 +258,9 @@ async def price(ctx, *, card_name: str = None):
 
 # --- HELPER: Extract card name from context ---
 async def resolve_card_name(ctx, card_name):
-    """Try to get card name from: typed input → replied embed → last graded cache"""
     if card_name:
         return card_name
 
-    # Check if replying to a MUKSCAN grade report embed
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         if ref.embeds:
@@ -275,7 +269,6 @@ async def resolve_card_name(ctx, card_name):
                 if line.startswith('##'):
                     return line.replace('##', '').strip()
 
-    # Fall back to last graded cache
     cached = last_graded.get(ctx.channel.id)
     if cached and cached.get("card"):
         return cached["card"]
@@ -299,13 +292,12 @@ async def flip(ctx, *, card_name: str = None):
         You are a Pokémon card investment analyst. Evaluate whether this card is worth grading and flipping:
         Card: {resolved}
 
-        STEP 1: Use Google Search to find current SOLD prices only:
-        - Raw average SOLD price (eBay completed sales or TCGPlayer Market Price)
-        - PSA 9 average SOLD price (completed eBay sales only)
-        - PSA 10 average SOLD price (completed eBay sales only)
-        Do NOT use active auction bids or unsold listings under any circumstances.
-        For every price listed, include the source in parentheses. Example: $45.00 (eBay last sold)
-        If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
+        STEP 1: Use Google Search to find current prices:
+        - Raw: eBay completed/sold listings average. Label as (eBay sold).
+        - PSA 9: TCGPlayer Market Price as primary. Label as (TCGPlayer). Fall back to eBay sold if unavailable.
+        - PSA 10: TCGPlayer Market Price as primary. Label as (TCGPlayer). Fall back to eBay sold if unavailable.
+        - Do NOT use active auction bids or unsold listings under any circumstances.
+        - If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
 
         STEP 2: Calculate profit potential using these fixed PSA grading costs:
         - PSA Economy submission: $25 per card
@@ -316,7 +308,7 @@ async def flip(ctx, *, card_name: str = None):
         FORMAT EXACTLY LIKE THIS:
 
         ## [CARD NAME]
-        **Raw Price:** $X.XX (source)
+        **Raw Price:** $X.XX (eBay sold)
         **PSA 9 Value:** $X.XX (source) | **PSA 10 Value:** $X.XX (source)
 
         ---
