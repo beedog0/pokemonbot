@@ -42,7 +42,7 @@ async def command_list(ctx):
     )
     embed.add_field(
         name="💰 !price <card name>",
-        value="Look up live market prices from eBay & TCGPlayer.\n`!price Charizard Base Set 4/102`",
+        value="Full price breakdown PSA 1-10 with most recent sold dates.\n`!price Charizard Base Set 4/102`",
         inline=False
     )
     embed.add_field(
@@ -221,20 +221,40 @@ async def price(ctx, *, card_name: str = None):
         await ctx.send("❓ Please provide a card name! Example: `!price Charizard Base Set 4/102`")
         return
 
-    status_msg = await ctx.send(f"💸 Searching market data for **{card_name}**...")
+    status_msg = await ctx.send(f"💸 Searching full market data for **{card_name}**...")
 
     try:
         price_prompt = f"""
-        Find the current market price for the Pokémon card: {card_name}.
+        Find the most complete and current market pricing for the Pokémon card: {card_name}.
 
         PRICING RULES:
-        - Raw price: eBay completed/sold listings average. Label as (eBay sold).
-        - PSA 9 and PSA 10: use TCGPlayer Market Price as primary source. Label as (TCGPlayer).
-        - If TCGPlayer graded data unavailable, use eBay completed sales. Label as (eBay sold).
+        - For Raw: use eBay most recent sold listing with date. Label as (eBay last sold MM/DD/YYYY).
+        - For PSA 1 through PSA 10: search each grade individually.
+          - Use TCGPlayer Market Price as primary source. Label as (TCGPlayer).
+          - If TCGPlayer data is unavailable for a grade, use most recent eBay sold with date. Label as (eBay sold MM/DD/YYYY).
+          - If no data exists for a grade, write N/A.
         - Do NOT use active auction bids or unsold listings under any circumstances.
         - If the card name includes a language tag (e.g. JP, KR), search for that specific language version.
 
-        Keep it brief and clean. No citations, no footnotes, no code blocks.
+        FORMAT EXACTLY LIKE THIS:
+
+        ## [CARD NAME] - Price Report
+
+        **Raw (Last Sold):** $X.XX (eBay last sold MM/DD/YYYY)
+
+        **Graded Prices:**
+        PSA 1: $X.XX (source) or N/A
+        PSA 2: $X.XX (source) or N/A
+        PSA 3: $X.XX (source) or N/A
+        PSA 4: $X.XX (source) or N/A
+        PSA 5: $X.XX (source) or N/A
+        PSA 6: $X.XX (source) or N/A
+        PSA 7: $X.XX (source) or N/A
+        PSA 8: $X.XX (source) or N/A
+        PSA 9: $X.XX (source)
+        PSA 10: $X.XX (source)
+
+        STRICT RULES: No citations, no footnotes, no code blocks.
         """
 
         response = client.models.generate_content(
@@ -245,7 +265,7 @@ async def price(ctx, *, card_name: str = None):
             )
         )
 
-        embed = discord.Embed(title=f"💰 Market Value: {card_name}", color=0x2ecc71)
+        embed = discord.Embed(title=f"💰 Full Price Report: {card_name}", color=0x2ecc71)
         embed.description = response.text
         embed.set_footer(text="Sold listings only | eBay & TCGPlayer via Google Search")
 
