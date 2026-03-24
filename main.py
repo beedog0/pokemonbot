@@ -42,7 +42,7 @@ async def command_list(ctx):
     )
     embed.add_field(
         name="💰 !price <card name>",
-        value="Look up live market prices from eBay & TCGPlayer.\n`!price Charizard Base Set 4/102`",
+        value="Full price breakdown Raw through PSA 10 with sources.\n`!price Charizard Base Set 4/102`",
         inline=False
     )
     embed.add_field(
@@ -83,6 +83,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - For Raw price: use eBay completed/sold listings average. Label as (eBay sold).
     - For PSA 9 and PSA 10: ALWAYS use TCGPlayer Market Price as the primary source. Search "TCGPlayer [card name] PSA 9" and "TCGPlayer [card name] PSA 10". Label as (TCGPlayer).
     - If TCGPlayer data is unavailable for graded copies, search eBay completed sales for PSA 9 and PSA 10 and label as (eBay sold).
+    - If eBay is also unavailable, use PriceCharting.com and label as (PriceCharting).
     - Do NOT use active auction bids, active listings, or unsold Buy It Now prices ever.
     - If the card is a confirmed non-English version, search for prices specific to that language version.
 
@@ -221,20 +222,43 @@ async def price(ctx, *, card_name: str = None):
         await ctx.send("❓ Please provide a card name! Example: `!price Charizard Base Set 4/102`")
         return
 
-    status_msg = await ctx.send(f"💸 Searching market data for **{card_name}**...")
+    status_msg = await ctx.send(f"💸 Searching full market data for **{card_name}**...")
 
     try:
         price_prompt = f"""
-        Find the current market price for the Pokémon card: {card_name}.
+        Find the most complete and current market pricing for the Pokémon card: {card_name}.
 
-        PRICING RULES:
-        - Raw price: eBay completed/sold listings average. Label as (eBay sold).
-        - PSA 9 and PSA 10: use TCGPlayer Market Price as primary source. Label as (TCGPlayer).
-        - If TCGPlayer graded data unavailable, use eBay completed sales. Label as (eBay sold).
+        PRICING RULES — follow this source priority order for EVERY grade:
+        1. Primary: eBay most recent completed/sold listing. Label as (eBay sold MM/DD/YYYY).
+        2. Fallback 1: If no eBay sold data, use TCGPlayer Market Price. Label as (TCGPlayer).
+        3. Fallback 2: If no TCGPlayer data, use PriceCharting.com. Label as (PriceCharting).
+        - You MUST find a price for every grade listed. Never write "N/A" or "Data unavailable" — always search harder using the fallback sources.
         - Do NOT use active auction bids or unsold listings under any circumstances.
         - If the card name includes a language tag (e.g. JP, KR), search for that specific language version.
 
-        Keep it brief and clean. No citations, no footnotes, no code blocks.
+        FORMAT EXACTLY LIKE THIS:
+
+        ## [CARD NAME] - Price Report
+
+        **Raw (Last Sold):** $X.XX (eBay sold MM/DD/YYYY)
+
+        **Graded Prices:**
+        PSA 1: $X.XX (source)
+        PSA 2: $X.XX (source)
+        PSA 3: $X.XX (source)
+        PSA 4: $X.XX (source)
+        PSA 5: $X.XX (source)
+        PSA 6: $X.XX (source)
+        PSA 7: $X.XX (source)
+        PSA 8: $X.XX (source)
+        PSA 9: $X.XX (source)
+        PSA 10: $X.XX (source)
+
+        STRICT RULES:
+        - List ALL grades from Raw to PSA 10. Do not skip any.
+        - Always include source in parentheses for every price.
+        - Never output "N/A", "unavailable", or "no data" — always use fallback sources.
+        - No citations, no footnotes, no code blocks.
         """
 
         response = client.models.generate_content(
@@ -245,9 +269,9 @@ async def price(ctx, *, card_name: str = None):
             )
         )
 
-        embed = discord.Embed(title=f"💰 Market Value: {card_name}", color=0x2ecc71)
+        embed = discord.Embed(title=f"💰 Full Price Report: {card_name}", color=0x2ecc71)
         embed.description = response.text
-        embed.set_footer(text="Sold listings only | eBay & TCGPlayer via Google Search")
+        embed.set_footer(text="eBay sold → TCGPlayer → PriceCharting | MUKSCAN")
 
         await status_msg.delete()
         await ctx.send(embed=embed)
@@ -292,10 +316,10 @@ async def flip(ctx, *, card_name: str = None):
         You are a Pokémon card investment analyst. Evaluate whether this card is worth grading and flipping:
         Card: {resolved}
 
-        STEP 1: Use Google Search to find current prices:
-        - Raw: eBay completed/sold listings average. Label as (eBay sold).
-        - PSA 9: TCGPlayer Market Price as primary. Label as (TCGPlayer). Fall back to eBay sold if unavailable.
-        - PSA 10: TCGPlayer Market Price as primary. Label as (TCGPlayer). Fall back to eBay sold if unavailable.
+        STEP 1: Use Google Search to find current prices using this source priority:
+        1. Primary: eBay completed/sold listings average. Label as (eBay sold).
+        2. Fallback 1: TCGPlayer Market Price. Label as (TCGPlayer).
+        3. Fallback 2: PriceCharting.com. Label as (PriceCharting).
         - Do NOT use active auction bids or unsold listings under any circumstances.
         - If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
 
@@ -308,7 +332,7 @@ async def flip(ctx, *, card_name: str = None):
         FORMAT EXACTLY LIKE THIS:
 
         ## [CARD NAME]
-        **Raw Price:** $X.XX (eBay sold)
+        **Raw Price:** $X.XX (source)
         **PSA 9 Value:** $X.XX (source) | **PSA 10 Value:** $X.XX (source)
 
         ---
