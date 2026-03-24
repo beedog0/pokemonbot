@@ -85,11 +85,19 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     **📝 Rationale**
     (1-sentence explaining the grade)
 
+    IMAGING NOTES:
+    - If the card is inside a sleeve or toploader, ignore the sleeve edges when judging borders.
+    - If there is glare or reflections on the card, do NOT interpret bright spots as surface damage.
+    - Compensate for lighting artifacts when assessing centering — judge borders conservatively.
+    - Camera angle can distort border appearance; account for perspective when measuring centering.
+    - When in doubt on centering due to image quality, lean toward a more favorable assessment.
+
     STRICT RULES:
     - Put the Grade and Price at the TOP.
     - Identify rarity markers like SIR, FA, SAR, etc.
     - DO NOT use JSON, brackets, or code blocks.
     - DO NOT use footnotes or citations.
+    - For PSA 10 candidates, note if centering could not be confirmed due to image quality.
     """
 
     try:
