@@ -11,7 +11,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 2. Setup Gemini Client (Paid Tier Required for Search Tool)
+# 2. Setup Client
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 
 @bot.event
@@ -34,63 +34,50 @@ async def grade(ctx):
 
     status_msg = await ctx.send("🧐 MUKSCAN is performing a professional Grade & Price analysis...")
 
-    # Download image
     try:
         response = requests.get(attachment.url)
         img_data = BytesIO(response.content).read()
-    except Exception:
-        await status_msg.edit(content="❌ Failed to download the image.")
-        return
 
-    # Updated Prompt for Top-Heavy Info + Rarity + Search
-    prompt = """
-    You are a professional PSA grader and market analyst.
-    
-    STEP 1: Identify the card in extreme detail: Name, Set, Number, and Rarity (e.g., SIR, Full Art, Illustration Rare, Holo, Reverse Holo).
-    STEP 2: Use Google Search to find the CURRENT market price for this specific version (Raw, PSA 9, and PSA 10).
-    STEP 3: Grade the physical card in the image (Centering, Corners, Edges, Surface).
-    
-    FORMAT THE RESPONSE EXACTLY LIKE THIS:
-    
-    # [PREDICTED PSA GRADE]
-    ## [CARD NAME] - [SET] - [NUMBER]
-    **Rarity:** [e.g. Special Illustration Rare / Holo / etc]
-    **Market Value:** [Live Price for Raw, PSA 9, and PSA 10]
-    
-    ---
-    **📐 Centering Assessment**
-    (Brief assessment)
-    
-    **💥 Physical Condition**
-    (Details on Corners, Edges, and Surface)
-    
-    **📝 Rationale**
-    (1-sentence explaining the grade)
-    
-    STRICT RULES:
-    - Put the Grade and Price at the TOP.
-    - Identify rarity markers like SIR, FA, SAR, etc.
-    - DO NOT use JSON, brackets, or code blocks.
-    - DO NOT use footnotes or citations.
-    """
+        # UPDATED PROMPT: Specific "Top-Heavy" template
+        prompt = """
+        You are a professional PSA grader and market analyst.
+        First, identify the card in detail: Name, Set, Number, and Rarity (e.g., SIR, FA, SAR, Holo).
+        Then, use Google Search to find current market prices.
+        
+        YOU MUST FOLLOW THIS LAYOUT EXACTLY:
+        
+        # [PREDICTED PSA GRADE]
+        ## [ESTIMATED PRICE: Raw: $X | PSA 9: $X | PSA 10: $X]
+        ### [CARD NAME] - [SET] - [NUMBER] ([RARITY])
+        
+        ---
+        **📐 Centering**
+        (Brief assessment)
+        
+        **💥 Physical Condition**
+        (Details on Corners, Edges, and Surface)
+        
+        **📝 Rationale**
+        (1-sentence explanation)
+        
+        STRICT RULES:
+        - The Grade and Price MUST be the first two lines.
+        - Use the specific rarity acronyms like SIR, FA, etc.
+        - NO JSON, NO brackets, NO citations.
+        """
 
-    try:
-        # Using the Search Tool automatically in the grading process
         response = client.models.generate_content(
-            model='gemini-2.0-flash', # Or gemini-2.5-flash
+            model='gemini-2.0-flash-lite-preview', 
             contents=[prompt, genai.types.Part.from_bytes(data=img_data, mime_type='image/jpeg')],
             config=genai.types.GenerateContentConfig(
                 tools=[genai.types.Tool(google_search=genai.types.GoogleSearchRetrieval())]
             )
         )
         
-        # Random footer for vibe
-        footers = ["Official MUKSCAN PSA Estimate", "Verified Market Data", "MUKSCAN: The Gold Standard"]
-
         embed = discord.Embed(title="📋 MUKSCAN Professional Report", color=0xFFD700)
         embed.set_thumbnail(url=attachment.url)
         embed.description = response.text
-        embed.set_footer(text=random.choice(footers))
+        embed.set_footer(text="Official MUKSCAN PSA Estimate • Verified Market Data")
         
         await status_msg.edit(content=None, embed=embed)
 
