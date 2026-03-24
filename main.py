@@ -60,7 +60,7 @@ async def command_list(ctx):
     )
     embed.add_field(
         name="❓ !ask <question>",
-        value="Ask anything Pokémon or TCG related — events, stores, new sets, conventions, and more. Remembers context so you can reply to follow up.\n`!ask any TCG stores near 77001`\n`!ask when is the next Pokémon convention in Houston`",
+        value="Ask anything Pokémon or TCG related — events, stores, new sets, conventions, and more.\n`!ask any TCG stores near 77001`",
         inline=False
     )
     embed.add_field(
@@ -94,9 +94,9 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     STEP 2: Use Google Search to find the CURRENT market price for this specific version (Raw, PSA 9, and PSA 10).
     PRICING RULES:
     - For Raw price: use eBay completed/sold listings average. Label as (eBay sold).
-    - For PSA 9 and PSA 10: ALWAYS use TCGPlayer Market Price as the primary source. Search "TCGPlayer [card name] PSA 9" and "TCGPlayer [card name] PSA 10". Label as (TCGPlayer).
-    - If TCGPlayer data is unavailable for graded copies, search eBay completed sales for PSA 9 and PSA 10 and label as (eBay sold).
-    - If eBay is also unavailable, use PriceCharting.com but ONLY use results explicitly labeled as PSA grades. Label as (PriceCharting).
+    - For PSA 9 and PSA 10: ALWAYS use TCGPlayer Market Price as the primary source. Label as (TCGPlayer).
+    - If TCGPlayer data is unavailable, use eBay completed sales and label as (eBay sold).
+    - If eBay is also unavailable, use PriceCharting.com but ONLY results explicitly labeled as PSA grades. Label as (PriceCharting).
     - Do NOT use active auction bids, active listings, or unsold Buy It Now prices ever.
     - If the card is a confirmed non-English version, search for prices specific to that language version.
 
@@ -106,28 +106,29 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - PSA 10 allows up to 60/40 centering on the front and 75/25 on the back.
     - PSA 9 allows slightly looser centering but must still be reasonably centered.
     - Only dock the grade for centering if it clearly exceeds these tolerances.
-    - Do NOT recite the PSA tolerance numbers in the centering assessment — just describe what you observe and whether it passes or not.
+    - Do NOT recite the PSA tolerance numbers in the centering assessment.
 
-    FORMAT THE RESPONSE EXACTLY LIKE THIS:
+    FORMAT THE RESPONSE EXACTLY LIKE THIS — use this exact structure, no deviations:
 
     # [PREDICTED PSA GRADE]
-    ## [CARD NAME] - [SET] - [NUMBER] (add [JP] or language tag only if card name and attacks are non-English)
-    **Rarity:** [e.g. Special Illustration Rare / Holo / etc]
-    **Language:** [e.g. Japanese / Korean — omit this line entirely if English]
-    **Market Value:**
-    Raw: $X.XX (eBay sold)
-    PSA 9: $X.XX (TCGPlayer) or $X.XX (eBay sold)
-    PSA 10: $X.XX (TCGPlayer) or $X.XX (eBay sold)
+    ## [CARD NAME] - [SET] - [NUMBER] [LANGUAGE TAG if non-English]
+    **Rarity:** [rarity]
+    **Language:** [language — omit line entirely if English]
 
-    ---
-    **📐 Centering Assessment**
-    (Describe what you observe about the borders and whether centering is acceptable. Do NOT quote PSA tolerance numbers.)
+    💵 **Market Value**
+    ┣ Raw — $X.XX (source)
+    ┣ PSA 9 — $X.XX (source)
+    ┗ PSA 10 — $X.XX (source)
 
-    **💥 Physical Condition**
-    (Details on Corners, Edges, and Surface)
+    ━━━━━━━━━━━━━━━━━━━━━━
+    📐 **Centering**
+    [Brief assessment of border symmetry]
 
-    **📝 Rationale**
-    (1-sentence explaining the grade)
+    💥 **Physical Condition**
+    [Corners / Edges / Surface — each on its own line if needed]
+
+    📝 **Rationale**
+    [1 sentence explaining the grade]
 
     IMAGING NOTES:
     - If the card is inside a sleeve or toploader, ignore the sleeve edges when judging borders.
@@ -142,7 +143,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - Only use SOLD pricing — no active auctions, no unsold listings.
     - Always include the price source in parentheses next to each price.
     - DO NOT recite PSA tolerance numbers anywhere in the response.
-    - DO NOT use JSON, brackets, or code blocks.
+    - DO NOT use JSON, code blocks, or markdown tables.
     - DO NOT use footnotes or citations.
     - For PSA 10 candidates, note if centering could not be confirmed due to image quality.
     """
@@ -241,41 +242,38 @@ async def price(ctx, *, card_name: str = None):
         price_prompt = f"""
         Find the most complete and current market pricing for the Pokémon card: {card_name}.
 
-        PRICING RULES — follow this source priority order for EVERY grade:
+        PRICING RULES — follow this source priority for EVERY grade:
         1. Primary: eBay most recent completed/sold listing. Label as (eBay sold MM/DD/YYYY).
-        2. Fallback 1: If no eBay sold data found, use TCGPlayer Market Price — search "TCGPlayer [card name] PSA [grade]". Label as (TCGPlayer).
-        3. Fallback 2: If no TCGPlayer data found, use PriceCharting.com — search "PriceCharting [card name] PSA [grade]".
-           - CRITICAL: On PriceCharting, only use results explicitly labeled as "PSA [grade]".
-           - Generic PriceCharting grades like "Grade 7", "Grade 8", "Grade 9" are NOT PSA grades — ignore them entirely.
-           - Only use PriceCharting data if it says "PSA 9", "PSA 10" etc. explicitly.
-           - Label as (PriceCharting).
-        - For low PSA grades (PSA 1-5) where no real sold data exists from any source, provide a reasonable estimate based on the price curve relative to known grades and label as (~est.).
-        - Do NOT use active auction bids or unsold listings under any circumstances.
-        - If the card name includes a language tag (e.g. JP, KR), search for that specific language version.
+        2. Fallback 1: TCGPlayer Market Price. Label as (TCGPlayer).
+        3. Fallback 2: PriceCharting.com — ONLY use results explicitly labeled "PSA [grade]". Generic "Grade 7/8/9" labels are NOT PSA — ignore them. Label as (PriceCharting).
+        - For PSA 1-5 with no real data anywhere, estimate based on price curve and label as (~est.).
+        - Do NOT use active auction bids or unsold listings.
+        - If a language tag is included (JP, KR, etc.), search that version specifically.
 
         FORMAT EXACTLY LIKE THIS:
 
         ## [CARD NAME] - Price Report
 
-        **Raw (Last Sold):** $X.XX (eBay sold MM/DD/YYYY)
+        💵 **Raw**
+        ┗ Last Sold: $X.XX (eBay sold MM/DD/YYYY)
 
-        **Graded Prices:**
-        PSA 1: $X.XX (source)
-        PSA 2: $X.XX (source)
-        PSA 3: $X.XX (source)
-        PSA 4: $X.XX (source)
-        PSA 5: $X.XX (source)
-        PSA 6: $X.XX (source)
-        PSA 7: $X.XX (source)
-        PSA 8: $X.XX (source)
-        PSA 9: $X.XX (source)
-        PSA 10: $X.XX (source)
+        📊 **Graded Prices**
+        ┣ PSA 1  — $X.XX (source)
+        ┣ PSA 2  — $X.XX (source)
+        ┣ PSA 3  — $X.XX (source)
+        ┣ PSA 4  — $X.XX (source)
+        ┣ PSA 5  — $X.XX (source)
+        ┣ PSA 6  — $X.XX (source)
+        ┣ PSA 7  — $X.XX (source)
+        ┣ PSA 8  — $X.XX (source)
+        ┣ PSA 9  — $X.XX (source)
+        ┗ PSA 10 — $X.XX (source)
 
         STRICT RULES:
-        - List ALL grades from Raw to PSA 10. Do not skip any.
-        - Always include source in parentheses for every price.
-        - Never use generic PriceCharting grade labels — PSA-specific data only.
-        - No citations, no footnotes, no code blocks.
+        - List ALL grades. Do not skip any.
+        - Always include source in parentheses.
+        - Never use generic PriceCharting grade labels — PSA-specific only.
+        - No citations, no footnotes, no code blocks, no markdown tables.
         """
 
         response = client.models.generate_content(
@@ -333,32 +331,35 @@ async def flip(ctx, *, card_name: str = None):
         You are a Pokémon card investment analyst. Evaluate whether this card is worth grading and flipping:
         Card: {resolved}
 
-        STEP 1: Use Google Search to find current prices using this source priority:
-        1. Primary: eBay completed/sold listings average. Label as (eBay sold).
-        2. Fallback 1: TCGPlayer Market Price. Label as (TCGPlayer).
-        3. Fallback 2: PriceCharting.com — only use data explicitly labeled as PSA grades, NOT generic "Grade 7/8/9". Label as (PriceCharting).
-        - Do NOT use active auction bids or unsold listings under any circumstances.
-        - If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
+        STEP 1: Use Google Search — source priority:
+        1. eBay completed/sold average. Label as (eBay sold).
+        2. TCGPlayer Market Price. Label as (TCGPlayer).
+        3. PriceCharting — PSA-labeled data only, no generic grades. Label as (PriceCharting).
+        - No active bids or unsold listings.
+        - Use language-specific pricing if card has a language tag.
 
-        STEP 2: Calculate profit potential using these fixed PSA grading costs:
-        - PSA Economy submission: $25 per card
-        - Assume 60% chance of PSA 9, 20% chance of PSA 10, 20% chance of PSA 8 or lower
+        STEP 2: Calculate using PSA Economy = $25/card.
+        - 60% chance PSA 9, 20% PSA 10, 20% PSA 8 or lower.
 
-        STEP 3: Give a clear FLIP / NO FLIP verdict.
+        STEP 3: FLIP or NO FLIP verdict.
 
         FORMAT EXACTLY LIKE THIS:
 
         ## [CARD NAME]
-        **Raw Price:** $X.XX (source)
-        **PSA 9 Value:** $X.XX (source) | **PSA 10 Value:** $X.XX (source)
 
-        ---
-        **📊 Profit Breakdown**
-        Expected return after fees: $X.XX
-        Net profit vs raw: $X.XX
+        💵 **Prices**
+        ┣ Raw — $X.XX (source)
+        ┣ PSA 9 — $X.XX (source)
+        ┗ PSA 10 — $X.XX (source)
 
+        ━━━━━━━━━━━━━━━━━━━━━━
+        📊 **Profit Breakdown**
+        ┣ Expected return after fees — $X.XX
+        ┗ Net profit vs raw — $X.XX
+
+        ━━━━━━━━━━━━━━━━━━━━━━
         **✅ VERDICT: FLIP** or **❌ VERDICT: NO FLIP**
-        (1-sentence reason)
+        [1-sentence reason]
 
         STRICT RULES: No JSON, no code blocks, no citations, no footnotes.
         """
@@ -395,30 +396,30 @@ async def pop(ctx, *, card_name: str = None):
 
     try:
         pop_prompt = f"""
-        You are a Pokémon card grading analyst. Look up the PSA population report for this card:
+        You are a Pokémon card grading analyst. Look up the PSA population report for:
         Card: {resolved}
 
-        Use Google Search to find the current PSA population data.
+        Use Google Search to find current PSA population data.
 
         FORMAT EXACTLY LIKE THIS:
 
-        ## [CARD NAME] - PSA Population Report
-        **Total Graded:** [number]
+        ## [CARD NAME] — PSA Population Report
 
-        | Grade | Population |
-        |-------|------------|
-        | PSA 10 | [number] |
-        | PSA 9  | [number] |
-        | PSA 8  | [number] |
-        | PSA 7  | [number] |
-        | PSA 6 and below | [number] |
+        👥 **Total Graded:** [number]
 
-        ---
-        **📊 Analysis**
+        📊 **Grade Breakdown**
+        ┣ PSA 10 — [number]
+        ┣ PSA 9  — [number]
+        ┣ PSA 8  — [number]
+        ┣ PSA 7  — [number]
+        ┗ PSA 6 and below — [number]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        📈 **Analysis**
         PSA 10 Rate: [X]% of all graded copies
-        (1-2 sentences on what the pop report means for this card's value and rarity)
+        [1-2 sentences on what the pop report means for value and rarity]
 
-        STRICT RULES: No citations, no footnotes, no code blocks outside the table.
+        STRICT RULES: No citations, no footnotes, no code blocks, no markdown tables.
         """
 
         response = client.models.generate_content(
@@ -445,7 +446,6 @@ async def pop(ctx, *, card_name: str = None):
 async def ask(ctx, *, question: str = None):
     user_id = ctx.author.id
 
-    # Pull context from a replied-to MUKSCAN embed if no question typed
     if not question:
         if ctx.message.reference:
             ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
@@ -457,7 +457,6 @@ async def ask(ctx, *, question: str = None):
             await ctx.send("❓ Ask me something! Example: `!ask any TCG stores near 77001`")
             return
 
-    # If replying to a previous message, prepend that message as context
     elif ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         if ref.embeds and ref.embeds[0].description:
@@ -465,15 +464,12 @@ async def ask(ctx, *, question: str = None):
         elif ref.content and ref.author.bot:
             question = f"Regarding your previous response: {ref.content[:300]}\n\nMy question: {question}"
 
-    # Initialize history for this user if needed
     if user_id not in ask_history:
         ask_history[user_id] = []
 
-    # Keep last 10 exchanges to avoid token bloat
     if len(ask_history[user_id]) > 20:
         ask_history[user_id] = ask_history[user_id][-20:]
 
-    # Add user message to history
     ask_history[user_id].append({
         "role": "user",
         "parts": [{"text": question}]
@@ -497,12 +493,40 @@ async def ask(ctx, *, question: str = None):
     - New set release dates and products
     - Current news in the Pokémon TCG community
 
-    Be conversational, helpful, and concise. Format responses cleanly without excessive headers."""
+    IMPORTANT — When searching for product drops and collection releases, search ALL of the following separately:
+    - Official Pokémon TCG announcements (pokemoncenter.com, pokemon.com)
+    - Retailer-exclusive products: search "Sam's Club Pokémon exclusive", "Best Buy Pokémon exclusive", "Costco Pokémon", "Target Pokémon exclusive", "Walmart Pokémon exclusive" separately
+    - Retailer sign-up events: search "Best Buy Pokémon sign up event", "Sam's Club Pokémon White Flare exclusive"
+    - Fan communities: search "Pokémon TCG exclusive drops this week reddit" and "pokebeach new products"
+    - Do NOT limit results to only official TPCi announcements — retailer exclusives are confirmed real products and must be included
+
+    FORMAT your responses like this for product/event listings:
+
+    ## [Topic Title]
+
+    ━━━━━━━━━━━━━━━━━━━━━━
+    🛍️ **[Product or Event Name]**
+    ┣ 📍 Where: [retailer or location]
+    ┣ 📅 Date: [date or TBD]
+    ┣ 🎟️ Sign-up required: [Yes/No]
+    ┗ 📝 Notes: [brief detail]
+
+    [repeat block for each product/event]
+
+    For store lookups, list each store as:
+    🏪 **[Store Name]**
+    ┣ 📍 [Address]
+    ┣ 📞 [Phone if available]
+    ┗ 🕐 [Hours if available]
+
+    For general questions, respond conversationally without heavy formatting.
+    Keep responses concise and scannable. No walls of text."""
 
     try:
-        # Build contents with system context + full history
-        contents = [{"role": "user", "parts": [{"text": system_prompt}]},
-                    {"role": "model", "parts": [{"text": "Understood! I'm MUKSCAN, your Pokémon and TCG expert. Ask me anything about cards, stores, events, or collecting!"}]}]
+        contents = [
+            {"role": "user", "parts": [{"text": system_prompt}]},
+            {"role": "model", "parts": [{"text": "Understood! I'm MUKSCAN, your Pokémon and TCG expert. Ask me anything about cards, stores, events, or collecting!"}]}
+        ]
         contents.extend(ask_history[user_id])
 
         response = client.models.generate_content(
@@ -515,13 +539,11 @@ async def ask(ctx, *, question: str = None):
 
         reply = response.text
 
-        # Add model response to history
         ask_history[user_id].append({
             "role": "model",
             "parts": [{"text": reply}]
         })
 
-        # Split into chunks if over Discord's 4096 embed limit
         chunks = [reply[i:i+4000] for i in range(0, len(reply), 4000)]
 
         await status_msg.delete()
@@ -533,7 +555,7 @@ async def ask(ctx, *, question: str = None):
                 color=0x3498db
             )
             if i == len(chunks) - 1:
-                embed.set_footer(text="Reply to this message with !ask to follow up | !clearchat to reset")
+                embed.set_footer(text="Reply with !ask to follow up | !clearchat to reset")
             await ctx.send(embed=embed)
 
     except Exception as e:
