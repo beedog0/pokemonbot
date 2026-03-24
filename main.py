@@ -95,3 +95,11 @@ async def grade(ctx):
         await status_msg.edit(content=f"⚠️ MUKSCAN Error: {str(e)}")
 
 bot.run(os.getenv('DISCORD_TOKEN'))
+
+from google import genai
+import os
+
+client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+
+for m in client.models.list():
+    print(m.name)
