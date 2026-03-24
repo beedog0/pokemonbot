@@ -83,7 +83,7 @@ async def run_grade(ctx, status_msg, img_data, img_url, override_card=None):
     - For Raw price: use eBay completed/sold listings average. Label as (eBay sold).
     - For PSA 9 and PSA 10: ALWAYS use TCGPlayer Market Price as the primary source. Search "TCGPlayer [card name] PSA 9" and "TCGPlayer [card name] PSA 10". Label as (TCGPlayer).
     - If TCGPlayer data is unavailable for graded copies, search eBay completed sales for PSA 9 and PSA 10 and label as (eBay sold).
-    - If eBay is also unavailable, use PriceCharting.com and label as (PriceCharting).
+    - If eBay is also unavailable, use PriceCharting.com but ONLY use results explicitly labeled as PSA grades. Label as (PriceCharting).
     - Do NOT use active auction bids, active listings, or unsold Buy It Now prices ever.
     - If the card is a confirmed non-English version, search for prices specific to that language version.
 
@@ -230,9 +230,13 @@ async def price(ctx, *, card_name: str = None):
 
         PRICING RULES — follow this source priority order for EVERY grade:
         1. Primary: eBay most recent completed/sold listing. Label as (eBay sold MM/DD/YYYY).
-        2. Fallback 1: If no eBay sold data, use TCGPlayer Market Price. Label as (TCGPlayer).
-        3. Fallback 2: If no TCGPlayer data, use PriceCharting.com. Label as (PriceCharting).
-        - You MUST find a price for every grade listed. Never write "N/A" or "Data unavailable" — always search harder using the fallback sources.
+        2. Fallback 1: If no eBay sold data found, use TCGPlayer Market Price — search "TCGPlayer [card name] PSA [grade]". Label as (TCGPlayer).
+        3. Fallback 2: If no TCGPlayer data found, use PriceCharting.com — search "PriceCharting [card name] PSA [grade]".
+           - CRITICAL: On PriceCharting, only use results explicitly labeled as "PSA [grade]".
+           - Generic PriceCharting grades like "Grade 7", "Grade 8", "Grade 9" are NOT PSA grades — ignore them entirely.
+           - Only use PriceCharting data if it says "PSA 9", "PSA 10" etc. explicitly.
+           - Label as (PriceCharting).
+        - For low PSA grades (PSA 1-5) where no real sold data exists from any source, provide a reasonable estimate based on the price curve relative to known grades and label as (~est.).
         - Do NOT use active auction bids or unsold listings under any circumstances.
         - If the card name includes a language tag (e.g. JP, KR), search for that specific language version.
 
@@ -257,7 +261,7 @@ async def price(ctx, *, card_name: str = None):
         STRICT RULES:
         - List ALL grades from Raw to PSA 10. Do not skip any.
         - Always include source in parentheses for every price.
-        - Never output "N/A", "unavailable", or "no data" — always use fallback sources.
+        - Never use generic PriceCharting grade labels — PSA-specific data only.
         - No citations, no footnotes, no code blocks.
         """
 
@@ -271,7 +275,7 @@ async def price(ctx, *, card_name: str = None):
 
         embed = discord.Embed(title=f"💰 Full Price Report: {card_name}", color=0x2ecc71)
         embed.description = response.text
-        embed.set_footer(text="eBay sold → TCGPlayer → PriceCharting | MUKSCAN")
+        embed.set_footer(text="eBay sold → TCGPlayer → PriceCharting (PSA only) | MUKSCAN")
 
         await status_msg.delete()
         await ctx.send(embed=embed)
@@ -319,7 +323,7 @@ async def flip(ctx, *, card_name: str = None):
         STEP 1: Use Google Search to find current prices using this source priority:
         1. Primary: eBay completed/sold listings average. Label as (eBay sold).
         2. Fallback 1: TCGPlayer Market Price. Label as (TCGPlayer).
-        3. Fallback 2: PriceCharting.com. Label as (PriceCharting).
+        3. Fallback 2: PriceCharting.com — only use data explicitly labeled as PSA grades, NOT generic "Grade 7/8/9". Label as (PriceCharting).
         - Do NOT use active auction bids or unsold listings under any circumstances.
         - If the card includes a language tag (e.g. JP, KR), search for that language version's pricing specifically.
 
