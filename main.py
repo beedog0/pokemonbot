@@ -12,8 +12,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Setup Gemini
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-model = genai.GenerativeModel('gemini-1.5-flash')
-
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 @bot.event
 async def on_ready():
     print(f'✅ MUKSCAN (Gemini Edition) is online!')
