@@ -54,6 +54,11 @@ async def command_list(ctx):
         inline=False
     )
     embed.add_field(
+        name="📈 !invest <card name>",
+        value="Full investment analysis — risk, outlook, print run status, price history & trends.\n`!invest Mew ex Shiny Treasure ex 347/190`",
+        inline=False
+    )
+    embed.add_field(
         name="👥 !pop <card name>",
         value="Check the PSA population report for a card — how many graded at each grade.\n`!pop Mew ex Shiny Treasure ex 347/190`",
         inline=False
@@ -381,6 +386,138 @@ async def flip(ctx, *, card_name: str = None):
 
     except Exception as e:
         await status_msg.edit(content=f"⚠️ Flip Analysis Error: {str(e)}")
+
+
+# --- COMMAND: !invest ---
+@bot.command()
+async def invest(ctx, *, card_name: str = None):
+    resolved = await resolve_card_name(ctx, card_name)
+
+    if not resolved:
+        await ctx.send("❓ Please provide a card name.\nExample: `!invest Mew ex Shiny Treasure ex 347/190`")
+        return
+
+    status_msg = await ctx.send(f"📈 Running investment analysis on **{resolved}**...")
+
+    try:
+        invest_prompt = f"""
+        You are a Pokémon TCG investment analyst. Perform a full investment analysis on:
+        Card: {resolved}
+
+        Use Google Search to research ALL of the following:
+
+        STEP 1 — CURRENT PRICING (sold listings only, no active bids):
+        - Raw current price (eBay sold or TCGPlayer)
+        - PSA 9 and PSA 10 current price (TCGPlayer primary, eBay sold fallback)
+
+        STEP 2 — PRICE HISTORY & TREND:
+        - Search PriceCharting for this card's price history
+        - What was the price 6 months ago, 1 year ago, 2 years ago (approximate)?
+        - Is the trend: Rising / Falling / Stable / Volatile?
+        - What caused major price movements if known?
+
+        STEP 3 — PRINT RUN STATUS:
+        - Is this set still in print or out of print?
+        - Has it been reprinted or is a reprint announced?
+        - Search "[card set name] reprint" and "[card set name] out of print" to confirm
+        - How does print status affect supply and price outlook?
+
+        STEP 4 — RECENT NEWS:
+        - Search "[card name] price news 2025 2026" for any relevant developments
+        - Any tournament usage, competitive relevance, or hype driving price?
+        - Any Pokémon anime, game, or media tie-ins boosting demand?
+        - Any sealed product affecting raw supply?
+
+        STEP 5 — INVESTMENT SCORING:
+        Rate each of the following on a scale of 1-10 and explain briefly:
+        - Demand Score: How sought after is this card?
+        - Scarcity Score: How rare/limited is supply?
+        - Stability Score: How stable has the price been?
+        - Growth Score: How likely is price appreciation?
+
+        STEP 6 — OVERALL VERDICT
+
+        FORMAT EXACTLY LIKE THIS — put the summary at the top, details below:
+
+        ## [CARD NAME] — Investment Report
+
+        ⚡ **QUICK SUMMARY**
+        ┣ Overall Rating: [BUY / HOLD / AVOID]
+        ┣ Risk Level: [Low / Medium / High]
+        ┣ Success Rate: [X]% (estimated probability of value increase in 12 months)
+        ┣ 12-Month Outlook: [Bullish 📈 / Neutral ➡️ / Bearish 📉]
+        ┗ Best Strategy: [e.g. "Buy raw, hold 12 months" or "Grade and hold PSA 10"]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        💵 **Current Prices**
+        ┣ Raw — $X.XX (source)
+        ┣ PSA 9 — $X.XX (source)
+        ┗ PSA 10 — $X.XX (source)
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        📉 **Price History**
+        ┣ 2 Years Ago — ~$X.XX
+        ┣ 1 Year Ago — ~$X.XX
+        ┣ 6 Months Ago — ~$X.XX
+        ┣ Today — $X.XX
+        ┗ Trend: [Rising / Falling / Stable / Volatile]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        🖨️ **Print Run Status**
+        ┣ Status: [In Print / Out of Print / Reprint Announced]
+        ┣ Set: [set name]
+        ┗ Impact: [1 sentence on how print status affects price]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        📰 **Recent News**
+        [2-4 bullet points of relevant news affecting this card's value]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        🎯 **Investment Scores**
+        ┣ Demand     — [X]/10 — [brief reason]
+        ┣ Scarcity   — [X]/10 — [brief reason]
+        ┣ Stability  — [X]/10 — [brief reason]
+        ┗ Growth     — [X]/10 — [brief reason]
+
+        ━━━━━━━━━━━━━━━━━━━━━━
+        📊 **Full Analysis**
+        [2-3 sentences summarizing the overall investment case for this card]
+
+        🔗 **Price Chart:** https://www.pricecharting.com/search-products?q=[CARD+NAME+URL+ENCODED]&type=prices
+
+        STRICT RULES:
+        - Put the Quick Summary at the TOP always.
+        - Only use sold pricing — no active bids.
+        - No citations, no footnotes, no code blocks.
+        - Replace spaces with + in the PriceCharting URL.
+        """
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=invest_prompt,
+            config=genai.types.GenerateContentConfig(
+                tools=[genai.types.Tool(google_search=genai.types.GoogleSearch())]
+            )
+        )
+
+        # Split into chunks if needed
+        reply = response.text
+        chunks = [reply[i:i+4000] for i in range(0, len(reply), 4000)]
+
+        await status_msg.delete()
+
+        for i, chunk in enumerate(chunks):
+            embed = discord.Embed(
+                title=f"📈 Investment Report: {resolved}" if i == 0 else f"📈 Investment Report: {resolved} (continued)",
+                description=chunk,
+                color=0xf39c12
+            )
+            if i == len(chunks) - 1:
+                embed.set_footer(text="MUKSCAN Investment Analysis | Not financial advice")
+            await ctx.send(embed=embed)
+
+    except Exception as e:
+        await status_msg.edit(content=f"⚠️ Investment Analysis Error: {str(e)}")
 
 
 # --- COMMAND: !pop ---
