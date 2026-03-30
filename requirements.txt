@@ -1,3 +1,5 @@
 discord.py
 requests
 google-genai
+opencv-python-headless
+numpy
